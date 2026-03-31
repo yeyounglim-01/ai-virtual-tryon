@@ -2,7 +2,7 @@
 title: AI Virtual Try-On
 emoji: 👕
 colorFrom: red
-colorTo: orange
+colorTo: yellow
 sdk: streamlit
 sdk_version: "1.32.0"
 app_file: app.py
