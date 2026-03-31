@@ -1,3 +1,14 @@
+---
+title: AI Virtual Try-On
+emoji: 👕
+colorFrom: red
+colorTo: orange
+sdk: streamlit
+sdk_version: "1.32.0"
+app_file: app.py
+pinned: false
+---
+
 # 👕 AI Virtual Try-On
 
 > 전신 사진 또는 텍스트 프롬프트로 아바타를 생성하고, 원하는 옷을 가상으로 입어볼 수 있는 AI 기반 가상 피팅 서비스
