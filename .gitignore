@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+.DS_Store
+*.safetensors
+*.pkl
+*.ckpt
+*.pt
+venv/
+.venv/
+garments/
