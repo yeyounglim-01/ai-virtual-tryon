@@ -130,7 +130,7 @@ def generate_person_from_text(prompt: str) -> Image.Image:
         model="stabilityai/stable-diffusion-xl-base-1.0",
         token=hf_token if hf_token else None,
     )
-    full_prompt = f"{prompt}, full body shot, white background, fashion photography, photorealistic"
+    full_prompt = f"{prompt}, wearing a plain white t-shirt, full body shot, standing straight, arms at sides, white background, fashion photography, photorealistic"
     result = client.text_to_image(full_prompt)
     return result
 
