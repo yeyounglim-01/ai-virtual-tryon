@@ -9,4 +9,3 @@ __pycache__/
 *.pt
 venv/
 .venv/
-garments/
