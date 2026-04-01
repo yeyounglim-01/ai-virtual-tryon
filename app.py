@@ -6,6 +6,7 @@ import os
 import io
 import base64
 import tempfile
+import requests
 
 # ── 페이지 설정 ──────────────────────────────────────────────
 st.set_page_config(
@@ -111,6 +112,12 @@ def load_garments():
 
 garments = load_garments()
 
+def open_image(path_or_url: str) -> Image.Image:
+    if path_or_url.startswith("http"):
+        response = requests.get(path_or_url)
+        return Image.open(io.BytesIO(response.content))
+    return Image.open(path_or_url)
+
 # ── OOTDiffusion API ─────────────────────────────────────────
 @st.cache_resource
 def get_ootd_client():
@@ -213,7 +220,7 @@ with right_col:
 
         for i, name in enumerate(garment_names):
             with cols[i % 3]:
-                img = Image.open(garments[name])
+                img = open_image(garments[name])
                 is_selected = (st.session_state["selected_garment_name"] == name)
                 border = "3px solid #FF4B4B" if is_selected else "3px solid transparent"
                 st.markdown(
