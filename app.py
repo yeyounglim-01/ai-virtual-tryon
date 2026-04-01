@@ -120,8 +120,8 @@ def open_image(path_or_url: str) -> Image.Image:
 
 # ── OOTDiffusion API ─────────────────────────────────────────
 @st.cache_resource
-def get_ootd_client():
-    return Client("levihsu/OOTDiffusion")
+def get_vto_client():
+    return Client("yisol/IDM-VTON")
 
 # ── SD 텍스트 → 이미지 생성 ──────────────────────────────────
 def generate_person_from_text(prompt: str) -> Image.Image:
@@ -136,23 +136,35 @@ def generate_person_from_text(prompt: str) -> Image.Image:
 
 # ── VTO 실행 ─────────────────────────────────────────────────
 def run_vto(person_img: Image.Image, garment_path: str) -> Image.Image:
-    client = get_ootd_client()
+    client = get_vto_client()
 
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
         person_img.convert("RGB").save(tmp.name)
         person_tmp = tmp.name
 
+    # garment_path가 URL이면 임시 파일로 저장
+    if garment_path.startswith("http"):
+        r = requests.get(garment_path)
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as gtmp:
+            gtmp.write(r.content)
+            garment_tmp = gtmp.name
+    else:
+        garment_tmp = garment_path
+
     result = client.predict(
-        vton_img=handle_file(person_tmp),
-        garm_img=handle_file(garment_path),
-        n_samples=1,
-        n_steps=20,
-        image_scale=2.0,
+        dict={"background": handle_file(person_tmp), "layers": [], "composite": None},
+        garm_img=handle_file(garment_tmp),
+        garment_des="upper body t-shirt",
+        is_checked=True,
+        is_checked_crop=True,
+        denoise_steps=30,
         seed=-1,
-        api_name="/process_hd"
+        api_name="/tryon"
     )
     os.unlink(person_tmp)
-    return Image.open(result[0]["image"])
+    if garment_path.startswith("http"):
+        os.unlink(garment_tmp)
+    return Image.open(result[0])
 
 # ── 이미지 → 다운로드용 base64 ───────────────────────────────
 def img_to_bytes(img: Image.Image) -> bytes:
