@@ -2,158 +2,243 @@ import streamlit as st
 from PIL import Image
 from gradio_client import Client, handle_file
 from huggingface_hub import InferenceClient
-import os
-import io
-import base64
-import tempfile
-import requests
+import os, io, tempfile, requests
 
-# ── 페이지 설정 ──────────────────────────────────────────────
-st.set_page_config(
-    page_title="AI Virtual Try-On",
-    page_icon="👕",
-    layout="wide",
-)
+st.set_page_config(page_title="AI Virtual Try-On", page_icon="👕", layout="wide")
 
-# ── 커스텀 CSS ───────────────────────────────────────────────
+# ── 테마 CSS (블랙 & 실버) ───────────────────────────────────
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+
+    .stApp { background-color: #0D0D0D; }
+
     /* 헤더 */
-    .main-title {
-        font-size: 2.8rem;
-        font-weight: 800;
-        background: linear-gradient(135deg, #FF4B4B, #FF8C42);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 0;
+    .hero {
+        text-align: center;
+        padding: 3rem 0 1rem 0;
     }
-    .sub-title {
-        color: #888;
+    .hero-title {
+        font-size: 3rem;
+        font-weight: 700;
+        color: #FFFFFF;
+        letter-spacing: -1px;
+    }
+    .hero-title span { color: #A0A0A0; }
+    .hero-sub {
+        color: #666;
         font-size: 1rem;
-        margin-top: 0;
-        margin-bottom: 2rem;
+        margin-top: 0.5rem;
     }
-    /* 섹션 타이틀 */
-    .section-title {
-        font-size: 1.1rem;
+
+    /* 스텝 인디케이터 */
+    .steps {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 0;
+        margin: 2rem 0;
+    }
+    .step {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #444;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    .step.active { color: #FFFFFF; }
+    .step.done { color: #888; }
+    .step-num {
+        width: 28px; height: 28px;
+        border-radius: 50%;
+        background: #222;
+        border: 1px solid #333;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 0.75rem; font-weight: 600; color: #555;
+    }
+    .step.active .step-num {
+        background: #FFFFFF;
+        color: #000;
+        border-color: #FFFFFF;
+    }
+    .step.done .step-num {
+        background: #333;
+        color: #888;
+        border-color: #444;
+    }
+    .step-divider {
+        width: 60px; height: 1px;
+        background: #2A2A2A;
+        margin: 0 0.75rem;
+    }
+
+    /* 카드 */
+    .card {
+        background: #141414;
+        border: 1px solid #222;
+        border-radius: 16px;
+        padding: 2rem;
+    }
+
+    /* 섹션 레이블 */
+    .label {
+        font-size: 0.7rem;
         font-weight: 600;
-        color: #FF4B4B;
+        color: #555;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        margin-bottom: 1rem;
+    }
+
+    /* 옷 카드 */
+    .garment-card {
+        background: #F5F5F5;
+        border-radius: 12px;
+        overflow: hidden;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    .garment-card:hover { transform: scale(1.02); }
+    .garment-selected-border {
+        outline: 2px solid #FFFFFF;
+        outline-offset: 3px;
+        border-radius: 12px;
+    }
+
+    /* 버튼 */
+    .stButton > button {
+        background: #FFFFFF !important;
+        color: #000000 !important;
+        border: none !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        font-size: 0.9rem !important;
+        padding: 0.6rem 1.5rem !important;
+        width: 100% !important;
+        transition: opacity 0.2s !important;
+    }
+    .stButton > button:hover { opacity: 0.85 !important; }
+
+    /* 보조 버튼 */
+    div[data-testid="stButton"] button[kind="secondary"] {
+        background: #1A1A1A !important;
+        color: #888 !important;
+        border: 1px solid #333 !important;
+    }
+
+    /* 라디오 */
+    .stRadio label { color: #AAA !important; font-size: 0.9rem !important; }
+    .stRadio [data-baseweb="radio"] { gap: 1.5rem !important; }
+
+    /* 인풋 */
+    .stTextInput input {
+        background: #1A1A1A !important;
+        border: 1px solid #2A2A2A !important;
+        color: #FFF !important;
+        border-radius: 10px !important;
+    }
+
+    /* 결과 비교 */
+    .result-label {
+        font-size: 0.75rem;
+        color: #555;
+        text-align: center;
+        margin-top: 0.5rem;
         text-transform: uppercase;
         letter-spacing: 1px;
-        margin-bottom: 0.5rem;
     }
-    /* 옷 카드 */
-    .garment-selected {
-        border: 3px solid #FF4B4B;
-        border-radius: 12px;
-    }
-    /* Try On 버튼 */
-    .stButton > button {
-        width: 100%;
-        background: linear-gradient(135deg, #FF4B4B, #FF8C42);
-        color: white;
-        font-size: 1.1rem;
-        font-weight: 700;
-        border: none;
-        border-radius: 12px;
-        padding: 0.8rem;
-        cursor: pointer;
-        transition: opacity 0.2s;
-    }
-    .stButton > button:hover {
-        opacity: 0.85;
-    }
-    /* 결과 이미지 */
-    .result-box {
-        background: #1A1C2E;
-        border-radius: 16px;
-        padding: 1.5rem;
-        text-align: center;
-    }
+
     /* 구분선 */
-    hr {
-        border-color: #2A2D45;
+    hr { border-color: #1E1E1E !important; }
+
+    /* 업로더 */
+    .stFileUploader {
+        background: #141414 !important;
+        border: 1px dashed #2A2A2A !important;
+        border-radius: 12px !important;
     }
-    /* 라디오 버튼 */
-    .stRadio > div {
-        flex-direction: row;
-        gap: 1rem;
+    [data-testid="stFileUploadDropzone"] {
+        background: #141414 !important;
+        border: 1px dashed #2A2A2A !important;
+    }
+
+    /* 에러/경고 */
+    .stAlert { border-radius: 10px !important; }
+
+    /* 스피너 */
+    .stSpinner { color: #888 !important; }
+
+    /* 푸터 */
+    .footer {
+        text-align: center;
+        color: #333;
+        font-size: 0.75rem;
+        padding: 2rem 0;
+        margin-top: 3rem;
+        border-top: 1px solid #1A1A1A;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# ── 헤더 ────────────────────────────────────────────────────
-st.markdown('<p class="main-title">👕 AI Virtual Try-On</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">사진을 올리거나 텍스트로 아바타를 만들고, 원하는 옷을 가상으로 입어보세요.</p>', unsafe_allow_html=True)
-st.markdown("---")
+# ── 세션 초기화 ──────────────────────────────────────────────
+if "step" not in st.session_state:
+    st.session_state.step = 1
+if "person_image" not in st.session_state:
+    st.session_state.person_image = None
+if "selected_garment" not in st.session_state:
+    st.session_state.selected_garment = None
+if "result_image" not in st.session_state:
+    st.session_state.result_image = None
 
-# ── 옷 이미지 로드 ───────────────────────────────────────────
+# ── 헬퍼 ────────────────────────────────────────────────────
 GITHUB_RAW = "https://raw.githubusercontent.com/yeyounglim-01/ai-virtual-tryon/main/garments"
 GARMENT_DIR = os.path.join(os.path.dirname(__file__), "garments")
+GARMENT_FILES = [f"tshirt_{str(i).zfill(2)}.png" for i in range(1, 15)]
 
-GARMENT_FILES = [
-    "tshirt_01.png", "tshirt_02.png", "tshirt_03.png", "tshirt_04.png",
-    "tshirt_05.png", "tshirt_06.png", "tshirt_07.png", "tshirt_08.png",
-    "tshirt_09.png", "tshirt_10.png", "tshirt_11.png", "tshirt_12.png",
-    "tshirt_13.png", "tshirt_14.png",
-]
+def open_image(path_or_url):
+    if path_or_url.startswith("http"):
+        return Image.open(io.BytesIO(requests.get(path_or_url).content))
+    return Image.open(path_or_url)
 
 def load_garments():
     garments = {}
-    # 로컬 파일 우선, 없으면 GitHub URL 사용
     for f in GARMENT_FILES:
         name = os.path.splitext(f)[0].replace("_", " ").title()
-        local_path = os.path.join(GARMENT_DIR, f)
-        if os.path.exists(local_path):
-            garments[name] = local_path
-        else:
-            garments[name] = f"{GITHUB_RAW}/{f}"
+        local = os.path.join(GARMENT_DIR, f)
+        garments[name] = local if os.path.exists(local) else f"{GITHUB_RAW}/{f}"
     return garments
 
-garments = load_garments()
-
-def open_image(path_or_url: str) -> Image.Image:
-    if path_or_url.startswith("http"):
-        response = requests.get(path_or_url)
-        return Image.open(io.BytesIO(response.content))
-    return Image.open(path_or_url)
-
-# ── OOTDiffusion API ─────────────────────────────────────────
 @st.cache_resource
 def get_vto_client():
     return Client("yisol/IDM-VTON")
 
-# ── SD 텍스트 → 이미지 생성 ──────────────────────────────────
-def generate_person_from_text(prompt: str) -> Image.Image:
-    hf_token = os.environ.get("HF_TOKEN", "")
+def generate_person(prompt):
+    token = os.environ.get("HF_TOKEN", "")
     client = InferenceClient(
         model="stabilityai/stable-diffusion-xl-base-1.0",
-        token=hf_token if hf_token else None,
+        token=token if token else None
     )
-    full_prompt = f"{prompt}, wearing a plain white t-shirt, full body shot, standing straight, arms at sides, white background, fashion photography, photorealistic"
-    result = client.text_to_image(full_prompt)
-    return result
+    full = f"{prompt}, wearing a plain white t-shirt, full body shot, standing straight, arms slightly away from body, plain light gray background, fashion photography, photorealistic, 8k"
+    return client.text_to_image(full)
 
-# ── VTO 실행 ─────────────────────────────────────────────────
-def run_vto(person_img: Image.Image, garment_path: str) -> Image.Image:
+def run_vto(person_img, garment_path):
     client = get_vto_client()
-
-    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-        person_img.convert("RGB").save(tmp.name)
-        person_tmp = tmp.name
-
-    # garment_path가 URL이면 임시 파일로 저장
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as t:
+        person_img.convert("RGB").save(t.name)
+        p_tmp = t.name
     if garment_path.startswith("http"):
         r = requests.get(garment_path)
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as gtmp:
-            gtmp.write(r.content)
-            garment_tmp = gtmp.name
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as t:
+            t.write(r.content)
+            g_tmp = t.name
     else:
-        garment_tmp = garment_path
-
-    result = client.predict(
-        dict={"background": handle_file(person_tmp), "layers": [], "composite": None},
-        garm_img=handle_file(garment_tmp),
+        g_tmp = garment_path
+    result = get_vto_client().predict(
+        dict={"background": handle_file(p_tmp), "layers": [], "composite": None},
+        garm_img=handle_file(g_tmp),
         garment_des="upper body t-shirt",
         is_checked=True,
         is_checked_crop=True,
@@ -161,135 +246,187 @@ def run_vto(person_img: Image.Image, garment_path: str) -> Image.Image:
         seed=-1,
         api_name="/tryon"
     )
-    os.unlink(person_tmp)
+    os.unlink(p_tmp)
     if garment_path.startswith("http"):
-        os.unlink(garment_tmp)
+        os.unlink(g_tmp)
     return Image.open(result[0])
 
-# ── 이미지 → 다운로드용 base64 ───────────────────────────────
-def img_to_bytes(img: Image.Image) -> bytes:
+def img_to_bytes(img):
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
 
-# ── 레이아웃: 왼쪽(입력) / 오른쪽(옷 선택) ─────────────────
-left_col, right_col = st.columns([1, 1], gap="large")
+# ── 헤더 ────────────────────────────────────────────────────
+st.markdown("""
+<div class="hero">
+    <div class="hero-title">AI Virtual <span>Try-On</span></div>
+    <div class="hero-sub">아바타를 만들고 원하는 옷을 가상으로 입어보세요</div>
+</div>
+""", unsafe_allow_html=True)
 
-with left_col:
-    st.markdown('<p class="section-title">01 / 나 설정</p>', unsafe_allow_html=True)
+# ── 스텝 인디케이터 ──────────────────────────────────────────
+step = st.session_state.step
 
-    input_mode = st.radio(
-        "입력 방식",
-        ["📷 사진 업로드", "✏️ 텍스트로 생성"],
-        label_visibility="collapsed"
-    )
+def step_class(n):
+    if n < step: return "step done"
+    if n == step: return "step active"
+    return "step"
 
-    person_image = None
+st.markdown(f"""
+<div class="steps">
+    <div class="{step_class(1)}">
+        <div class="step-num">{"✓" if step > 1 else "1"}</div>
+        <span>나 설정</span>
+    </div>
+    <div class="step-divider"></div>
+    <div class="{step_class(2)}">
+        <div class="step-num">{"✓" if step > 2 else "2"}</div>
+        <span>옷 선택</span>
+    </div>
+    <div class="step-divider"></div>
+    <div class="{step_class(3)}">
+        <div class="step-num">3</div>
+        <span>결과</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-    if input_mode == "📷 사진 업로드":
-        uploaded = st.file_uploader(
-            "전신 사진을 올려주세요",
-            type=["jpg", "jpeg", "png"],
-            label_visibility="collapsed"
-        )
-        if uploaded:
-            person_image = Image.open(uploaded).convert("RGB")
-            st.image(person_image, caption="업로드된 사진", use_column_width=True)
-
-    else:
-        text_prompt = st.text_input(
-            "어떤 사람을 만들까요?",
-            placeholder="예: a young korean woman, slim, standing straight",
-        )
-        if st.button("🎨 아바타 생성", key="gen_avatar"):
-            if text_prompt.strip():
-                with st.spinner("아바타 생성 중..."):
-                    try:
-                        person_image = generate_person_from_text(text_prompt)
-                        st.session_state["generated_person"] = person_image
-                    except Exception as e:
-                        st.error(f"생성 실패: {e}")
-            else:
-                st.warning("텍스트를 입력해주세요.")
-
-        if "generated_person" in st.session_state:
-            person_image = st.session_state["generated_person"]
-            st.image(person_image, caption="생성된 아바타", use_column_width=True)
-
-with right_col:
-    st.markdown('<p class="section-title">02 / 옷 선택</p>', unsafe_allow_html=True)
-
-    selected_garment = None
-
-    if not garments:
-        st.info("garments/ 폴더에 옷 이미지를 추가해주세요.")
-    else:
-        cols = st.columns(3)
-        garment_names = list(garments.keys())
-
-        if "selected_garment_name" not in st.session_state:
-            st.session_state["selected_garment_name"] = garment_names[0]
-
-        for i, name in enumerate(garment_names):
-            with cols[i % 3]:
-                img = open_image(garments[name])
-                is_selected = (st.session_state["selected_garment_name"] == name)
-                border = "3px solid #FF4B4B" if is_selected else "3px solid transparent"
-                st.markdown(
-                    f'<div style="border:{border};border-radius:12px;padding:4px;">',
-                    unsafe_allow_html=True
-                )
-                st.image(img, use_column_width=True)
-                st.markdown("</div>", unsafe_allow_html=True)
-                if st.button(f"{'✅ ' if is_selected else ''}{name}", key=f"garment_{i}"):
-                    st.session_state["selected_garment_name"] = name
-                    st.rerun()
-
-        selected_garment = garments[st.session_state["selected_garment_name"]]
-
-# ── Try On 버튼 ──────────────────────────────────────────────
 st.markdown("---")
-btn_col = st.columns([1, 2, 1])[1]
 
-with btn_col:
-    tryon_btn = st.button("✨ Try On!")
+# ══════════════════════════════════════════════════════════
+# STEP 1: 아바타 설정
+# ══════════════════════════════════════════════════════════
+if step == 1:
+    _, col, _ = st.columns([1, 2, 1])
+    with col:
+        st.markdown('<div class="label">Step 01 — 나를 설정하세요</div>', unsafe_allow_html=True)
 
-# ── 결과 ────────────────────────────────────────────────────
-if tryon_btn:
-    if person_image is None:
-        st.warning("사진을 업로드하거나 아바타를 먼저 생성해주세요.")
-    elif selected_garment is None:
-        st.warning("옷을 선택해주세요.")
-    else:
-        with st.spinner("옷을 입히는 중... (약 30초 소요)"):
+        mode = st.radio("입력 방식", ["📷  사진 업로드", "✏️  텍스트로 생성"], label_visibility="collapsed", horizontal=True)
+
+        if mode == "📷  사진 업로드":
+            uploaded = st.file_uploader("전신 사진 업로드 (흰 배경 권장)", type=["jpg","jpeg","png"], label_visibility="collapsed")
+            if uploaded:
+                st.session_state.person_image = Image.open(uploaded).convert("RGB")
+                st.image(st.session_state.person_image, use_column_width=True)
+
+        else:
+            prompt = st.text_input("", placeholder="예: a young korean woman, slim body, short hair")
+            if st.button("✨  아바타 생성"):
+                if prompt.strip():
+                    with st.spinner("아바타 생성 중... (30초 소요)"):
+                        try:
+                            st.session_state.person_image = generate_person(prompt)
+                        except Exception as e:
+                            st.error(f"생성 실패: {e}")
+                else:
+                    st.warning("텍스트를 입력해주세요.")
+
+            if st.session_state.person_image:
+                st.image(st.session_state.person_image, use_column_width=True)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        if st.session_state.person_image:
+            if st.button("다음 단계 →  옷 선택"):
+                st.session_state.step = 2
+                st.rerun()
+        else:
+            st.markdown('<p style="color:#444;text-align:center;font-size:0.85rem;">사진을 업로드하거나 아바타를 생성하면 다음으로 넘어갈 수 있어요.</p>', unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════
+# STEP 2: 옷 선택
+# ══════════════════════════════════════════════════════════
+elif step == 2:
+    st.markdown('<div class="label" style="text-align:center">Step 02 — 입고 싶은 옷을 선택하세요</div>', unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    garments = load_garments()
+    names = list(garments.keys())
+
+    if "selected_garment_name" not in st.session_state:
+        st.session_state.selected_garment_name = names[0]
+
+    cols = st.columns(4)
+    for i, name in enumerate(names):
+        with cols[i % 4]:
+            is_sel = st.session_state.selected_garment_name == name
+            border = "outline: 2px solid #FFFFFF; outline-offset: 3px;" if is_sel else ""
+            st.markdown(f'<div style="border-radius:12px;overflow:hidden;background:#F0F0F0;{border}">', unsafe_allow_html=True)
+            img = open_image(garments[name])
+            st.image(img, use_column_width=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+            if st.button(f"{'✓ ' if is_sel else ''}{name}", key=f"g_{i}"):
+                st.session_state.selected_garment_name = name
+                st.session_state.selected_garment = garments[name]
+                st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    b1, b2, b3 = st.columns([1, 1, 1])
+    with b1:
+        if st.button("← 이전"):
+            st.session_state.step = 1
+            st.rerun()
+    with b3:
+        sel = st.session_state.selected_garment_name
+        if st.button(f"선택 완료: {sel}  →"):
+            st.session_state.selected_garment = garments[sel]
+            st.session_state.step = 3
+            st.rerun()
+
+# ══════════════════════════════════════════════════════════
+# STEP 3: VTO 결과
+# ══════════════════════════════════════════════════════════
+elif step == 3:
+    st.markdown('<div class="label" style="text-align:center">Step 03 — 가상 피팅 결과</div>', unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    if st.session_state.result_image is None:
+        with st.spinner("옷을 입히는 중... (약 30~60초 소요)"):
             try:
-                result_img = run_vto(person_image, selected_garment)
-                st.session_state["result_img"] = result_img
+                st.session_state.result_image = run_vto(
+                    st.session_state.person_image,
+                    st.session_state.selected_garment
+                )
             except Exception as e:
                 st.error(f"VTO 실패: {e}")
+                if st.button("← 다시 시도"):
+                    st.session_state.step = 2
+                    st.rerun()
 
-if "result_img" in st.session_state:
-    st.markdown("---")
-    st.markdown('<p class="section-title">03 / 결과</p>', unsafe_allow_html=True)
+    if st.session_state.result_image:
+        c1, c2 = st.columns(2, gap="large")
+        with c1:
+            st.image(st.session_state.person_image, use_column_width=True)
+            st.markdown('<div class="result-label">원본</div>', unsafe_allow_html=True)
+        with c2:
+            st.image(st.session_state.result_image, use_column_width=True)
+            st.markdown('<div class="result-label">VTO 결과</div>', unsafe_allow_html=True)
 
-    res_left, res_right = st.columns(2, gap="large")
-    with res_left:
-        if person_image:
-            st.image(person_image, caption="입력 이미지", use_column_width=True)
-    with res_right:
-        st.image(st.session_state["result_img"], caption="VTO 결과", use_column_width=True)
-        st.download_button(
-            label="⬇️ 결과 다운로드",
-            data=img_to_bytes(st.session_state["result_img"]),
-            file_name="vto_result.png",
-            mime="image/png",
-        )
+        st.markdown("<br>", unsafe_allow_html=True)
+        d1, d2, d3 = st.columns([1, 1, 1])
+        with d1:
+            if st.button("← 옷 다시 선택"):
+                st.session_state.result_image = None
+                st.session_state.step = 2
+                st.rerun()
+        with d2:
+            st.download_button(
+                "⬇  결과 저장",
+                data=img_to_bytes(st.session_state.result_image),
+                file_name="vto_result.png",
+                mime="image/png"
+            )
+        with d3:
+            if st.button("처음부터 다시"):
+                st.session_state.step = 1
+                st.session_state.person_image = None
+                st.session_state.selected_garment = None
+                st.session_state.result_image = None
+                st.rerun()
 
 # ── 푸터 ────────────────────────────────────────────────────
-st.markdown("---")
-st.markdown(
-    '<p style="text-align:center;color:#555;font-size:0.8rem;">'
-    'Powered by OOTDiffusion · Stable Diffusion · Built with Streamlit'
-    '</p>',
-    unsafe_allow_html=True
-)
+st.markdown("""
+<div class="footer">
+    Powered by IDM-VTON · Stable Diffusion XL · Built with Streamlit
+</div>
+""", unsafe_allow_html=True)
