@@ -182,7 +182,7 @@ with left_col:
         )
         if uploaded:
             person_image = Image.open(uploaded).convert("RGB")
-            st.image(person_image, caption="업로드된 사진", use_container_width=True)
+            st.image(person_image, caption="업로드된 사진", use_column_width=True)
 
     else:
         text_prompt = st.text_input(
@@ -202,7 +202,7 @@ with left_col:
 
         if "generated_person" in st.session_state:
             person_image = st.session_state["generated_person"]
-            st.image(person_image, caption="생성된 아바타", use_container_width=True)
+            st.image(person_image, caption="생성된 아바타", use_column_width=True)
 
 with right_col:
     st.markdown('<p class="section-title">02 / 옷 선택</p>', unsafe_allow_html=True)
@@ -227,7 +227,7 @@ with right_col:
                     f'<div style="border:{border};border-radius:12px;padding:4px;">',
                     unsafe_allow_html=True
                 )
-                st.image(img, use_container_width=True)
+                st.image(img, use_column_width=True)
                 st.markdown("</div>", unsafe_allow_html=True)
                 if st.button(f"{'✅ ' if is_selected else ''}{name}", key=f"garment_{i}"):
                     st.session_state["selected_garment_name"] = name
@@ -263,9 +263,9 @@ if "result_img" in st.session_state:
     res_left, res_right = st.columns(2, gap="large")
     with res_left:
         if person_image:
-            st.image(person_image, caption="입력 이미지", use_container_width=True)
+            st.image(person_image, caption="입력 이미지", use_column_width=True)
     with res_right:
-        st.image(st.session_state["result_img"], caption="VTO 결과", use_container_width=True)
+        st.image(st.session_state["result_img"], caption="VTO 결과", use_column_width=True)
         st.download_button(
             label="⬇️ 결과 다운로드",
             data=img_to_bytes(st.session_state["result_img"]),
