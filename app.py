@@ -2,7 +2,7 @@ import streamlit as st
 from PIL import Image
 from gradio_client import Client, handle_file
 from huggingface_hub import InferenceClient
-import os, io, tempfile, requests
+import os, io, tempfile, requests, time
 
 st.set_page_config(page_title="AI Virtual Try-On", page_icon="👕", layout="wide")
 
@@ -236,20 +236,34 @@ def run_vto(person_img, garment_path):
             g_tmp = t.name
     else:
         g_tmp = garment_path
-    result = get_vto_client().predict(
-        dict={"background": handle_file(p_tmp), "layers": [], "composite": None},
-        garm_img=handle_file(g_tmp),
-        garment_des="upper body t-shirt",
-        is_checked=True,
-        is_checked_crop=True,
-        denoise_steps=30,
-        seed=-1,
-        api_name="/tryon"
-    )
+
+    last_error = None
+    for attempt in range(3):
+        try:
+            result = get_vto_client().predict(
+                dict={"background": handle_file(p_tmp), "layers": [], "composite": None},
+                garm_img=handle_file(g_tmp),
+                garment_des="upper body t-shirt",
+                is_checked=True,
+                is_checked_crop=True,
+                denoise_steps=30,
+                seed=-1,
+                api_name="/tryon"
+            )
+            os.unlink(p_tmp)
+            if garment_path.startswith("http"):
+                os.unlink(g_tmp)
+            return Image.open(result[0])
+        except Exception as e:
+            last_error = e
+            if attempt < 2:
+                wait = (attempt + 1) * 5
+                time.sleep(wait)
+
     os.unlink(p_tmp)
     if garment_path.startswith("http"):
         os.unlink(g_tmp)
-    return Image.open(result[0])
+    raise last_error
 
 def img_to_bytes(img):
     buf = io.BytesIO()
